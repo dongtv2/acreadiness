@@ -7,7 +7,8 @@ import os
 from datetime import datetime
 import sqlite3
 from sqlite3 import Error
-
+import streamlit_shadcn_ui as ui
+import matplotlib.pyplot as plt
 import streamlit as st
 
 
@@ -48,7 +49,6 @@ def process_flightplan(filepath, df_date):
     df = pd.read_excel(filepath)
     if df is None:
         return None
-
     # Preprocess data
     df.rename(columns={'BASE IN': 'BASE_IN', 'BASE OUT': 'BASE_OUT', 'FLT N0': 'FLT_NO', 'Unnamed: 17': 'MORE_INFOR'}, inplace=True)
     total_row_index = df.loc[df['BASE_IN'] == 'OUT'].index[0]
@@ -59,27 +59,25 @@ def process_flightplan(filepath, df_date):
     new_df.dropna(subset=['AC'], inplace=True)
 
     # Process 'AC' column
-    conditions = [
-        new_df['MORE_INFOR'].str.contains('NEO|FREEBIRD|ACT', case=False, na=False),
-        (new_df['AC'] == 'A321') & new_df['MORE_INFOR'].isna(),
-        new_df['AC'] != 'A330',
-        ~new_df['AC'].str.contains('A321|A330|NEO|FREEBIRD|ACT', case=False, na=False)
-    ]
-    values = [
-        new_df['AC'].astype(str) + '-' + new_df['MORE_INFOR'].astype(str),
-        new_df['AC'].astype(str) + '-CEO',
-        new_df['AC'].astype(str),
-        new_df['AC'].astype(str) + '-A320'
-    ]
-    new_df['AC'] = np.select(conditions, values, default=new_df['AC'])
+    mask = new_df['MORE_INFOR'].str.contains('NEO|FREEBIRD|ACT', case=False, na=False)
+    new_df['AC'] = np.where(mask, new_df['AC'].astype(str) + '-' + new_df['MORE_INFOR'].astype(str), new_df['AC'])
+
+    mask_a321 = (new_df['AC'] == 'A321') & new_df['MORE_INFOR'].isna()
+    new_df['AC'] = np.where(mask_a321, new_df['AC'].astype(str) + '-CEO', new_df['AC'])
+
+    mask_a330 = new_df['AC'] != 'A330'
+    new_df['AC'] = np.where(~mask & mask_a330, new_df['AC'].astype(str), new_df['AC'])
+
+    mask_remaining = ~new_df['AC'].str.contains('A321|A330|NEO|FREEBIRD|ACT', case=False, na=False)
+    new_df['AC'] = np.where(mask_remaining, new_df['AC'].astype(str) + '-A320', new_df['AC'])
 
     # Assign 'ACTYPE' based on 'AC'
     new_df['ACTYPE'] = new_df['AC'].apply(assign_actype)
 
     # Rename and reset columns
-    new_df.rename(columns={'STD': 'DEP', 'STD.1': 'STD'}, inplace=True)
+    new_df = new_df.rename(columns={'STD': 'DEP', 'STD.1': 'STD'})
     new_df.reset_index(drop=True, inplace=True)
-    new_df.drop(columns=['MORE_INFOR'], inplace=True)
+    new_df = new_df.drop(columns=['MORE_INFOR'])
 
     # Determine 'SECTOR'
     start_index = 0
@@ -99,7 +97,6 @@ def process_flightplan(filepath, df_date):
             start_index = i
     if pd.isna(new_df.loc[len(new_df)-1, 'SECTOR']):
         new_df.loc[start_index:, 'SECTOR'] = f'Sector {sector_counter}'
-
     # Add 'DATE' column and fill with df_date
     new_df['DATE'] = df_date
 
@@ -149,32 +146,52 @@ def calculate_out_in(df, columns):
         'BASE_IN': counts[columns[1]].reindex(counts[columns[0]].index, fill_value=0).values
     })
 
+    # Calculate total 'BASE_IN' and 'BASE_OUT'
+    total_base_in = result_df['BASE_IN'].sum()
+    total_base_out = result_df['BASE_OUT'].sum()
+
+    # Display the results
+    st.write("Total BASE_IN:", total_base_in)
+    st.write("Total BASE_OUT:", total_base_out)
+
+
     return result_df
 
 
 def calculate_flights(df):
     if df is None:
         print("DataFrame is None")
-        
         return
     
     # Filter rows where 'AC' does not contain 'FREEBIRD'
-    df_without_freebird = df[~df['AC'].str.contains('-FREEBIRD')]
+    df_without_wetlease = df[~df['AC'].str.contains('-FREEBIRD')]
 
     # Filter rows where 'AC' contains 'FREEBIRD'
     df_wetlease = df[df['AC'].str.contains('FREEBIRD')]
 
     # Calculate total number of flights without FREEBIRD
-    total_without_freebird = df_without_freebird.shape[0]
+    total_without_freebird = df_without_wetlease.shape[0]
 
     # Calculate total number of flights with FREEBIRD
     total_wetlease = len(df_wetlease)
+
+    # Count the number of each ACTYPE in df_without_wetlease
+    actype_counts = df_without_wetlease['ACTYPE'].value_counts()
+
     st.write("Total number of flights:", df.shape[0])
     st.write("Total number of Vietjet flights:", total_without_freebird)
     st.write("Total number of Wetlease flights:", total_wetlease)
+    st.write("Number of each ACTYPE in Vietjet flights:", actype_counts)
 
-    return total_without_freebird, total_wetlease
+def count_unique_actypes(df):
+    # Filter df to only include rows where 'AC' is unique
+    df_unique_ac = df.drop_duplicates(subset=['AC'])
 
+    # Count the number of each 'ACTYPE'
+    actype_counts = df_unique_ac['ACTYPE'].value_counts()
+
+    # Write the result to the Streamlit app
+    st.write(actype_counts)
 
 def plot_count_base_in_out(df_ns, df_pf):
 
