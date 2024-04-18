@@ -1,10 +1,8 @@
 import streamlit as st
 from function import *
 from import_function import *
-import streamlit_shadcn_ui as ui
 from streamlit_elements import elements, mui, html
 import sqlite3
-import streamlit_shadcn_ui as ui
 import matplotlib.pyplot as plt
 import plotly.graph_objects as go
 st.set_page_config(page_title="Schedule Check App", page_icon=":shark:", layout="wide")
@@ -103,13 +101,14 @@ def app():
 ## TAB 03 
         with tab3:
             st.write("OMC Overview")
-            df_sorted = df_ns_vj_nf_sgn.sort_values('STA')
+            # df_sorted = df_ns_vj_nf_sgn.sort_values('STA')
 
-            st.table(df_sorted)
-            st.write("Total AC:", df_ns_vj_nf_sgn.shape[0])
+            # st.table(df_sorted)
+
+            st.write("Total AC in SGN:", df_ns_vj_nf_sgn.shape[0])
             count_unique_actypes(df_ns_vj_nf_sgn)
-            count_inout_= calculate_out_in(df_ns_vj, ['BASE_OUT', 'BASE_IN'])
-            st.dataframe(count_inout_)
+            count_inout_vj= calculate_out_in(df_ns_vj, ['BASE_OUT', 'BASE_IN'])
+            st.dataframe(count_inout_vj)
 
 if __name__ == "__main__":
     app()
